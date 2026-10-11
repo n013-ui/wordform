@@ -1,5 +1,5 @@
 // 專題寫作排版工具（網頁版）：把 Gemini 的「排版用文字」轉成 Word 檔（.docx）
-// 版面與 Claude 版相同：A4、邊界 2 公分、標楷體 12 號、固定行高、凸排縮排、表格不跨頁。
+// 版面：A4、上下邊界 1.2 公分、左右邊界 2 公分、標楷體 12 號、固定行高、凸排縮排、表格不跨頁。
 // 這支程式在瀏覽器（使用 docx.iife.js）與 Node（測試用）都能執行。
 (function (root) {
   const D = (typeof docx !== 'undefined') ? docx : require('docx');
@@ -7,8 +7,10 @@
     ShadingType, BorderStyle, LineRuleType, VerticalAlign, HeightRule } = D;
 
   const FONT = '標楷體', SZ = 24;               // 12 號字
-  const PAGE_W_TW = 11906 - 2 * 1134;           // 9638 twips（A4 扣左右 2 公分）
-  const PAGE_H_PT = (16838 - 2 * 1134) / 20;    // 728.5 點可用高度
+  const MARGIN_LR = 1134;                       // 左右 2 公分
+  const MARGIN_TB = 680;                        // 上下 1.2 公分
+  const PAGE_W_TW = 11906 - 2 * MARGIN_LR;      // 9638 twips
+  const PAGE_H_PT = (16838 - 2 * MARGIN_TB) / 20; // 773.9 點可用高度
   const IND = 480;                              // 一個字寬（twips）
   const TABLE_LH = 360;                         // 表格內固定行高 18 點
   const NAPKIN_CM = 4.5;
@@ -117,7 +119,7 @@
             alignment: AL[s.align] || AlignmentType.JUSTIFIED,
             spacing: Object.assign({}, LINE, { before: s.before || 0, after: s.after || 0 }),
             indent: hang > 0 ? { left: s.left, hanging: hang } : { left: s.left, firstLine: -hang },
-            keepNext: s.keepNext, pageBreakBefore: qi > 0 && si === 0,
+            keepNext: s.keepNext, pageBreakBefore: qi > 0 && si === 0, widowControl: true,
           }));
         } else if (s.kind === 'table') {
           const widths = tableWidths(s.rows), n = widths.length, R = s.rows.length;
@@ -151,31 +153,61 @@
     return new Document({
       styles: { default: { document: { run: { font: FONT, size: SZ } } } },
       sections: [{ properties: { page: { size: { width: 11906, height: 16838 },
-        margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children }],
+        margin: { top: MARGIN_TB, bottom: MARGIN_TB, left: MARGIN_LR, right: MARGIN_LR, header: 340, footer: 340 } } }, children }],
     });
   }
 
   // ---------------- 估算頁數（固定行高，所以可以準確估算） ----------------
-  // 字寬（點）：中文與全形 12；英數依 Times New Roman 約略寬度
-  function cw(ch) {
-    const c = ch.codePointAt(0);
-    if (c > 0x2E7F) return 12;                          // CJK 與全形符號
-    if (/[A-Z]/.test(ch)) return 8;
-    if (/[a-z0-9]/.test(ch)) return 5.6;
-    if (ch === ' ') return 3;
-    return 4.5;
-  }
-  const NO_START = '，。、；：？！」』）】》〉%,.;:?!)]';   // 不放行首的標點
-  function countLines(text, firstW, restW) {
-    let lines = 1, x = 0, w = firstW;
-    const chars = Array.from(text);
-    for (let i = 0; i < chars.length; i++) {
-      const ch = chars[i], d = cw(ch);
-      if (x + d > w + 0.01) {
-        if (NO_START.includes(ch) && x + d <= w + 6.5) { x += d; continue; }  // 標點擠進行尾
-        lines++; x = 0; w = restW;
+  // 字寬（點）：整份文件都用標楷體，中文與全形 12；英數與空白在標楷體是半形，固定 6
+  function cw(ch) { return ch.codePointAt(0) < 127 ? 6 : 12; }
+  const NO_START = '，。、；：？！」』）】》〉,.;:?!)]%';   // 不放行首的標點
+  const NO_END = '「『（【《〈([';                         // 不放行尾的標點
+  // 模擬 Word 的換行：中文可在任何字之間換行；英數連在一起的字（含網址）視為一個字，
+  // 只在連字號「-」之後斷開；放不下就整個移到下一行，比一整行還長才逐字斷開；標點不能在行首時，把前一個字一起帶到下一行
+  const BREAK_AFTER = '-';
+  function tokens(text) {
+    const out = []; let cur = '';
+    for (const ch of Array.from(text)) {
+      const c = ch.codePointAt(0);
+      if (c > 32 && c <= 126) {
+        cur += ch;
+        if (BREAK_AFTER.includes(ch)) { out.push(cur); cur = ''; }
+      } else {
+        if (cur) { out.push(cur); cur = ''; }
+        out.push(ch);
       }
-      x += d;
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+  const tw = t => Array.from(t).reduce((s, ch) => s + cw(ch), 0);
+  // Word 預設「自動調整中文與英數之間的間距」：漢字和英數字相鄰時，中間多約 1/4 字寬
+  const isHan = ch => /[\u3400-\u9fff\uf900-\ufaff]/.test(ch || '');
+  const isAlnum = ch => /[A-Za-z0-9]/.test(ch || '');
+  const AUTOSPACE = 3;
+  function countLines(text, firstW, restW) {
+    let lines = 1, x = 0, w = firstW, prevW = 0, prevCh = '';
+    for (const tok of tokens(text)) {
+      const first = tok[0];
+      const gap = x > 0 && ((isHan(prevCh) && isAlnum(first)) || (isAlnum(prevCh) && isHan(first))) ? AUTOSPACE : 0;
+      const d = tw(tok) + gap;
+      if (x + d > w + 0.01) {
+        if (d > restW) {                       // 比一整行還長的英數字：先換到新的一行，再逐字斷開
+          if (x > 0) { lines++; w = restW; x = 0; }
+          for (const ch of Array.from(tok)) {
+            const dc = cw(ch);
+            if (x + dc > w + 0.01) { lines++; w = restW; x = 0; }
+            x += dc;
+          }
+          prevW = cw(tok.slice(-1)); prevCh = tok.slice(-1);
+          continue;
+        }
+        lines++; w = restW;
+        if (NO_START.includes(tok[0]) && prevW) x = prevW;      // 前一字跟著換行
+        else if (NO_END.includes(prevCh)) x = prevW;            // 開頭括號不留在行尾
+        else x = 0;
+      }
+      x += d; prevW = d; prevCh = Array.from(tok).pop();
     }
     return lines;
   }
@@ -202,28 +234,38 @@
     });
     // 排版模擬：段落可以跨頁，表格與概念圖框不跨頁，標題與下一段同頁
     let page = 1, y = 0;
+    const trace = [];
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
+      if (opt && opt.trace) trace.push({ i, page, y: Math.round(y * 10) / 10, h: Math.round(b.h * 10) / 10, split: b.split });
       if (b.keepNext && blocks[i + 1]) {
         const nx = blocks[i + 1];
         const need = b.h + (nx.split ? nx.lh : nx.h);
         if (y + need > PAGE_H_PT + 0.01 && y > 0) { page++; y = 0; }
       }
       if (!b.split) {
-        if (y + b.h > PAGE_H_PT + 0.01 && y > 0) { page++; y = 0; }
+        // 表格與概念圖框不能跨頁；留半行餘裕，避免估算誤差讓它其實被擠到下一頁
+        if (y + b.h + lhPt / 2 > PAGE_H_PT && y > 0) { page++; y = 0; }
         y += b.h;
       } else {
         const extra = b.h - b.lines * b.lh;   // 段前段後
         y += extra;
-        for (let k = 0; k < b.lines; k++) {
-          if (y + b.lh > PAGE_H_PT + 0.01) { page++; y = 0; }
-          y += b.lh;
+        // 段落跨頁時遵守「遺留字串控制」：頁尾、頁首都至少要有 2 行，否則整段移到下一頁
+        let left = b.lines;
+        while (left > 0) {
+          const fit = Math.floor((PAGE_H_PT - y + 0.01) / b.lh);
+          if (fit >= left) { y += left * b.lh; break; }
+          let take = Math.min(fit, left);
+          if (left - take < 2) take = left - 2;          // 下一頁至少留 2 行
+          if (take < 2 || (left === b.lines && take < 2)) take = 0;   // 這一頁至少 2 行，否則整段換頁
+          if (take > 0) left -= take;
+          page++; y = 0;
         }
       }
     }
     const free = Math.floor((PAGE_H_PT - y) / lhPt);
     const linesPerPage = Math.floor(PAGE_H_PT / lhPt);
-    return { pages: page, free, linesPerPage, fill: y / PAGE_H_PT };
+    return { pages: page, free, linesPerPage, fill: y / PAGE_H_PT, trace };
   }
 
   function verdict(e, n) {

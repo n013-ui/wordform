@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>專題寫作排版工具</title>
+<style>
+  :root { --ink:#1d2733; --muted:#5d6878; --line:#d6dde6; --brand:#1f5f99; --brand2:#174a78; --ok:#1f7a3c; --bad:#b42318; --bg:#f5f7fa; --card:#fff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif; line-height:1.6; }
+  main { max-width:860px; margin:0 auto; padding:28px 16px 64px; }
+  h1 { font-size:24px; margin:0 0 4px; letter-spacing:.02em; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 20px; }
+  .steps { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 22px; padding:0; list-style:none; font-size:13px; color:var(--muted); }
+  .steps li { background:var(--card); border:1px solid var(--line); border-radius:999px; padding:4px 12px; }
+  .steps b { color:var(--brand); margin-right:4px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; }
+  .row label { font-size:14px; font-weight:700; display:block; margin-bottom:4px; }
+  .row .f { flex:1 1 220px; }
+  input, select, textarea { width:100%; font:inherit; font-size:14px; border:1px solid var(--line); border-radius:6px; padding:9px 10px; background:#fff; color:var(--ink); }
+  textarea { height:220px; resize:vertical; line-height:1.55; }
+  .q { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:14px; }
+  .q h2 { font-size:16px; margin:0 0 8px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .q h2 small { font-weight:400; color:var(--muted); font-size:13px; }
+  .clear { font-size:12px; color:var(--muted); background:none; border:1px solid var(--line); border-radius:4px; padding:2px 8px; cursor:pointer; }
+  .est { margin-top:8px; font-size:14px; min-height:22px; }
+  .est .ok { color:var(--ok); font-weight:700; } .est .bad { color:var(--bad); font-weight:700; }
+  .msg { display:flex; gap:8px; align-items:flex-start; margin-top:6px; background:var(--bg); border:1px dashed var(--line); border-radius:6px; padding:7px 9px; }
+  .msg span { flex:1; }
+  .msg button { flex:none; font-size:12px; border:1px solid var(--brand); color:var(--brand); background:#fff; border-radius:4px; padding:2px 8px; cursor:pointer; }
+  .go { width:100%; padding:14px; font-size:17px; font-weight:700; color:#fff; background:var(--brand); border:0; border-radius:8px; cursor:pointer; }
+  .go:hover { background:var(--brand2); } .go:disabled { background:#8ea6bf; cursor:not-allowed; }
+  .note { font-size:13px; color:var(--muted); margin-top:14px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; }
+  .note b { color:var(--ink); }
+  .err { color:var(--bad); font-size:14px; margin-top:8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>專題寫作排版工具</h1>
+  <p class="sub">把 Gemini 給的「排版用文字」貼進來，下載排好版的 Word 檔：A4、邊界 2 公分、標楷體 12 號、固定行高、項目編號凸排縮排、表格不跨頁。所有處理都在你的瀏覽器裡完成，不會上傳任何資料。</p>
+  <ol class="steps">
+    <li><b>1</b>在 Gemini 的排版用文字按「複製」</li>
+    <li><b>2</b>貼到下方對應的題目</li>
+    <li><b>3</b>看頁數估算，不對就把提示句貼回 Gemini</li>
+    <li><b>4</b>下載 Word 檔</li>
+  </ol>
+
+  <div class="row">
+    <div class="f"><label for="fname">檔案名稱</label><input id="fname" placeholder="例如：80701_專題寫作"></div>
+    <div class="f" style="flex:0 1 220px"><label for="lh">行高</label>
+      <select id="lh"><option value="400">固定行高 20 點（每頁 36 行）</option><option value="360">固定行高 18 點（每頁 40 行）</option></select></div>
+  </div>
+
+  <div id="qs"></div>
+
+  <button class="go" id="go">下載 Word 檔（.docx）</button>
+  <div class="err" id="err"></div>
+
+  <div class="note">
+    <b>下載後：</b>用 <b>Microsoft Word</b> 開啟，版面會和估算一致。插入 Napkin 概念圖時，刪除虛線框，在同一位置插入圖片，並裁掉「Made with Napkin」字樣。最後「另存新檔」→ PDF。<br>
+    <b>注意：</b>上傳到 Google 雲端硬碟用 Google 文件開啟時，Google 文件不支援「固定行高」與標楷體，間距會變大、頁數可能增加。要交 PDF 時請用 Word 轉。<br>
+    <b>頁數估算</b>是依固定行高計算，通常與 Word 實際結果相差 1 行以內；交件前仍請在 Word 確認每題剛好兩頁、表格沒有被切開。
+  </div>
+</main>
+<script src="docx.iife.js"></script>
+<script src="app.js"></script>
+<script>
+(function () {
+  const NAMES = ['題目一', '題目二', '題目三'];
+  const box = document.getElementById('qs');
+  const store = {
+    get: k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+  NAMES.forEach((n, i) => {
+    const d = document.createElement('section');
+    d.className = 'q';
+    d.innerHTML = '<h2><span>' + n + ' <small>（' + (i === 0 ? '必填' : '寫好再貼，可留空') + '）</small></span>' +
+      '<button class="clear" type="button">清空</button></h2>' +
+      '<textarea id="t' + i + '" placeholder="題目標題&#10;題目說明……&#10;1. 小題……&#10;一、前言&#10;……"></textarea><div class="est" id="e' + i + '"></div>';
+    box.appendChild(d);
+    const ta = d.querySelector('textarea');
+    ta.value = store.get('zt_q' + i);
+    ta.addEventListener('input', () => { store.set('zt_q' + i, ta.value); schedule(); });
+    d.querySelector('.clear').addEventListener('click', () => { ta.value = ''; store.set('zt_q' + i, ''); update(); });
+  });
+  const fname = document.getElementById('fname'), lh = document.getElementById('lh');
+  fname.value = store.get('zt_name');
+  lh.value = store.get('zt_lh') || '400';
+  fname.addEventListener('input', () => store.set('zt_name', fname.value));
+  lh.addEventListener('change', () => { store.set('zt_lh', lh.value); update(); });
+
+  let timer;
+  function schedule() { clearTimeout(timer); timer = setTimeout(update, 300); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  function collect() {
+    const list = [];
+    NAMES.forEach((n, i) => {
+      const raw = document.getElementById('t' + i).value;
+      const qs = raw.trim() ? ZT.parse(raw) : [];
+      list.push({ i, raw, qs });
+    });
+    return list;
+  }
+  function update() {
+    const opt = { lineHeight: Number(lh.value) };
+    let n = 0;
+    collect().forEach(({ i, raw, qs }) => {
+      const el = document.getElementById('e' + i);
+      if (!raw.trim()) { el.innerHTML = ''; return; }
+      if (!qs.length || !qs.some(q => q.blocks.length)) {
+        el.innerHTML = '<span class="bad">✗ 讀不到作答。</span>請確認貼上的是 Gemini 的排版用文字，而且有「一、前言」。';
+        return;
+      }
+      el.innerHTML = qs.map(q => {
+        n++;
+        const v = ZT.verdict(ZT.estimate(q, opt), n);
+        const label = qs.length > 1 ? '（' + esc(q.title.slice(0, 12)) + '）' : '';
+        return v.ok ? '<span class="ok">✓ 估計' + label + esc(v.head) + '</span>'
+          : '<span class="bad">✗ 估計' + label + esc(v.head) + '。</span>把下面這句貼給 Gemini：<div class="msg"><span>' + esc(v.say) + '</span><button type="button" class="cp">複製</button></div>';
+      }).join('<br>');
+      el.querySelectorAll('.cp').forEach(b => b.addEventListener('click', () => {
+        const t = b.previousElementSibling.textContent;
+        (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(
+          () => { b.textContent = '已複製'; setTimeout(() => { b.textContent = '複製'; }, 1500); },
+          () => { const r = document.createRange(); r.selectNodeContents(b.previousElementSibling); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+      }));
+    });
+  }
+
+  document.getElementById('go').addEventListener('click', async () => {
+    const err = document.getElementById('err'); err.textContent = '';
+    const qs = collect().flatMap(x => x.qs).filter(q => q.blocks.length);
+    if (!qs.length) { err.textContent = '請先在「題目一」貼上 Gemini 的排版用文字。'; return; }
+    const btn = document.getElementById('go'); btn.disabled = true; btn.textContent = '產生中…';
+    try {
+      const blob = await ZT.Packer.toBlob(ZT.build(qs, { lineHeight: Number(lh.value) }));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (fname.value.trim() || '專題寫作作答').replace(/[\\/:*?"<>|]/g, '_') + '.docx';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } catch (e) {
+      err.textContent = '產生失敗：' + (e && e.message ? e.message : e);
+    } finally {
+      btn.disabled = false; btn.textContent = '下載 Word 檔（.docx）';
+    }
+  });
+  update();
+})();
+</script>
+</body>
+</html>

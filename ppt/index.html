@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>簡報範本填入工具</title>
+<style>
+  :root { --ink:#1d2733; --muted:#5d6878; --line:#d6dde6; --brand:#1f5f99; --brand2:#174a78; --ok:#1f7a3c; --bad:#b42318; --bg:#f5f7fa; --card:#fff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif; line-height:1.6; }
+  main { max-width:860px; margin:0 auto; padding:28px 16px 64px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:16px; margin:0 0 8px; }
+  .card h2 b { display:inline-block; width:24px; height:24px; border-radius:12px; background:var(--brand); color:#fff; text-align:center; line-height:24px; font-size:13px; margin-right:6px; }
+  .hint { color:var(--muted); font-size:13px; margin:0 0 8px; }
+  input[type=file] { font-size:14px; }
+  textarea { width:100%; height:220px; font:13px/1.5 Consolas,"Noto Sans TC",monospace; border:1px solid var(--line); border-radius:6px; padding:10px; resize:vertical; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  button { padding:12px 18px; font-size:15px; font-weight:700; border:0; border-radius:8px; cursor:pointer; color:#fff; background:var(--brand); }
+  button.alt { background:#fff; color:var(--brand); border:1px solid var(--brand); }
+  button:disabled { opacity:.55; cursor:wait; }
+  pre { white-space:pre-wrap; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px; font-size:13px; margin:8px 0 0; }
+  .status { font-size:14px; color:var(--muted); margin-top:10px; min-height:22px; }
+  .err { color:var(--bad); }
+  .note { font-size:13px; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>簡報範本填入工具</h1>
+  <p class="sub">把 AI 產生的簡報內容（封面、目錄、前言、5 個內容頁、結語、參考資料與講稿）自動填進你自己的 PPT 範本，保留範本的字型、顏色與背景；講稿放進每一頁的備忘稿。所有處理都在你的瀏覽器完成，不會上傳任何檔案。</p>
+
+  <div class="card">
+    <h2><b>1</b>選擇你的 PPT 範本（.pptx）</h2>
+    <p class="hint">範本建議：第 1 頁封面、有一頁「目錄」、一頁「前言」、幾頁內容頁（標題＋內文）、一頁「心得與結語」、一頁「資料來源」。內容頁不足 5 頁會自動複製補足。沒有範本也可以跳過，直接產生預設骨架。</p>
+    <input type="file" id="tpl" accept=".pptx">
+    <pre id="inspect" hidden></pre>
+  </div>
+
+  <div class="card">
+    <h2><b>2</b>貼上簡報內容</h2>
+    <p class="hint">在 Gem 輸入「填入範本」，按程式碼區塊右上角的「複製」，貼到下面（從 { 開始到 } 結束）。</p>
+    <textarea id="deck" placeholder='{ "topic": "…", "minutes": 7, "slides": [ … ], "script": [ … ] }'></textarea>
+  </div>
+
+  <div class="row">
+    <button id="go">填入我的範本並下載</button>
+    <button id="plain" class="alt">沒有範本：產生預設骨架</button>
+  </div>
+  <div class="status" id="status"></div>
+  <pre id="report" hidden></pre>
+
+  <p class="note" style="margin-top:18px">第一次使用需要載入約 20 MB 的程式，請耐心等候 10～30 秒；之後會快很多。下載後用 PowerPoint 開啟，在每個內容頁的虛線框貼上 Napkin 產生的圖，再檢查一次文字有沒有超出框外。</p>
+</main>
+<script src="pyodide/pyodide.js"></script>
+<script>
+let py = null;
+const $ = id => document.getElementById(id);
+function status(t, err) { $('status').innerHTML = err ? '<span class="err">' + t + '</span>' : t; }
+async function boot() {
+  if (py) return py;
+  status('載入程式中（第一次約 10～30 秒）…');
+  py = await loadPyodide({ indexURL: new URL('pyodide/', location.href).href });
+  await py.loadPackage(['micropip', 'lxml', 'pillow', 'typing-extensions']);
+  const base = new URL('pyodide/', location.href).href;
+  await py.runPythonAsync(`
+import micropip
+await micropip.install(['${base}xlsxwriter-3.2.9-py3-none-any.whl', '${base}python_pptx-1.0.2-py3-none-any.whl'], deps=False)
+`);
+  for (const f of ['ppt_fill.py', 'ppt_deck.py']) {
+    const code = await (await fetch(f)).text();
+    py.FS.writeFile('/home/pyodide/' + f, code);
+  }
+  await py.runPythonAsync(`
+exec(open('/home/pyodide/ppt_fill.py', encoding='utf-8').read())
+_d = {}
+exec(open('/home/pyodide/ppt_deck.py', encoding='utf-8').read(), _d)
+`);
+  return py;
+}
+function readDeck() {
+  let t = $('deck').value.trim();
+  t = t.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a < 0 || b < 0) throw new Error('沒有讀到簡報內容。請在 Gem 輸入「填入範本」，把整個程式碼區塊複製貼上。');
+  try { return JSON.parse(t.slice(a, b + 1)); }
+  catch (e) { throw new Error('內容格式有誤（' + e.message + '）。請在 Gem 輸入「請重新輸出填入範本的 JSON」，再複製一次。'); }
+}
+function download(bytes, name) {
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+function safeName(deck) { return (deck.topic || '簡報').replace(/[\\/:*?"<>|？]/g, '').slice(0, 16); }
+
+$('tpl').addEventListener('change', async () => {
+  const f = $('tpl').files[0]; if (!f) return;
+  try {
+    await boot();
+    py.FS.writeFile('/home/pyodide/template.pptx', new Uint8Array(await f.arrayBuffer()));
+    const r = await py.runPythonAsync(`inspect_template('/home/pyodide/template.pptx')`);
+    $('inspect').hidden = false; $('inspect').textContent = '範本辨識結果：\n' + r;
+    status('範本已讀取。');
+  } catch (e) { status('讀取範本失敗：' + e.message, true); }
+});
+
+async function run(useTemplate) {
+  $('report').hidden = true;
+  let deck;
+  try { deck = readDeck(); } catch (e) { status(e.message, true); return; }
+  if (useTemplate && !$('tpl').files[0]) { status('請先在第 1 步選擇範本，或按「沒有範本：產生預設骨架」。', true); return; }
+  const btns = [$('go'), $('plain')]; btns.forEach(b => b.disabled = true);
+  try {
+    await boot();
+    status('產生中…');
+    py.globals.set('deck_json', JSON.stringify(deck));
+    const check = await py.runPythonAsync(`
+import json
+deck = json.loads(deck_json)
+f, w, ov, st = _d['check'](deck)
+'\\n'.join(['✗ ' + x for x in f] + ['△ ' + x for x in w])
+`);
+    let rep;
+    if (useTemplate) {
+      py.FS.writeFile('/home/pyodide/template.pptx', new Uint8Array(await $('tpl').files[0].arrayBuffer()));
+      rep = await py.runPythonAsync(`fill_template('/home/pyodide/template.pptx', deck, '/home/pyodide/out.pptx')`);
+    } else {
+      await py.runPythonAsync(`_d['_pptx'](deck, '/home/pyodide/out.pptx')`);
+      rep = '已產生預設骨架（講稿在備忘稿）';
+    }
+    download(py.FS.readFile('/home/pyodide/out.pptx'), safeName(deck) + (useTemplate ? '_簡報.pptx' : '_簡報骨架.pptx'));
+    $('report').hidden = false;
+    $('report').textContent = rep.replace(/\/home\/pyodide\/out\.pptx/g, '下載的檔案') + (check ? '\n\n內容檢查：\n' + check : '\n\n內容檢查：通過');
+    status('完成！檔案已下載。');
+  } catch (e) {
+    status('發生錯誤：' + (e.message || e).toString().split('\n').slice(-2).join(' '), true);
+  } finally { btns.forEach(b => b.disabled = false); }
+}
+$('go').addEventListener('click', () => run(true));
+$('plain').addEventListener('click', () => run(false));
+</script>
+</body>
+</html>

@@ -14,8 +14,3 @@
 
 Word 檔產生使用 [docx](https://github.com/dolanmiu/docx) 9.7.1（MIT License，見 LICENSE-docx.txt）。
 
-## 簡報範本填入工具（ppt/）
-
-把 Gem 產生的簡報內容（JSON）填進學生自己的 PPT 範本，保留範本格式，講稿放進備忘稿。使用網址：https://n013-ui.github.io/wordform/ppt/
-
-在瀏覽器中以 Pyodide 0.26.4 執行 python-pptx 1.0.2（皆為開放原始碼授權），所有檔案都在本機處理。

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>簡報範本填入工具</title>
+<style>
+  :root { --ink:#1d2733; --muted:#5d6878; --line:#d6dde6; --brand:#1f5f99; --ok:#1f7a3c; --bad:#b42318; --bg:#f5f7fa; --card:#fff; --tint:#eaf1f8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif; line-height:1.6; }
+  main { max-width:860px; margin:0 auto; padding:28px 16px 64px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:16px; margin:0 0 10px; }
+  .card h2 b { display:inline-block; width:24px; height:24px; border-radius:12px; background:var(--brand); color:#fff; text-align:center; line-height:24px; font-size:13px; margin-right:6px; }
+  .hint { color:var(--muted); font-size:13px; margin:0 0 8px; }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .tabs label { border:1px solid var(--line); border-radius:6px; padding:6px 12px; font-size:14px; cursor:pointer; background:#fff; }
+  .tabs input { display:none; }
+  .tabs input:checked + span { color:var(--brand); font-weight:700; }
+  .tabs label:has(input:checked) { border-color:var(--brand); background:var(--tint); }
+  input[type=file] { font-size:14px; max-width:100%; }
+  textarea { width:100%; height:200px; font:13px/1.5 Consolas,"Noto Sans TC",monospace; border:1px solid var(--line); border-radius:6px; padding:10px; resize:vertical; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  button { padding:12px 18px; font-size:15px; font-weight:700; border:0; border-radius:8px; cursor:pointer; color:#fff; background:var(--brand); }
+  button.alt { background:#fff; color:var(--brand); border:1px solid var(--brand); }
+  button:disabled { opacity:.55; cursor:wait; }
+  pre { white-space:pre-wrap; word-break:break-all; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px; font-size:13px; margin:8px 0 0; }
+  .status { font-size:14px; color:var(--muted); margin-top:10px; min-height:22px; }
+  .err { color:var(--bad); }
+  .good { color:var(--ok); }
+  .note { font-size:13px; color:var(--muted); }
+  .opt { font-size:14px; margin-top:10px; display:flex; gap:6px; align-items:flex-start; }
+  ol.steps { font-size:14px; margin:6px 0 0; padding-left:20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>簡報範本填入工具</h1>
+  <p class="sub">（選用）把 AI 產生的簡報內容自動填進你自己的 PPT 範本：封面、目錄、前言、5 個內容頁、心得結語、參考資料，講稿放進每一頁的備忘稿，保留範本的背景、字型與顏色。所有處理都在你的瀏覽器完成，檔案不會上傳。</p>
+
+  <div class="card">
+    <h2><b>1</b>簡報內容從哪個 AI 來？</h2>
+    <div class="tabs" role="radiogroup">
+      <label><input type="radio" name="src" value="gem" checked><span>Gemini（Gem）</span></label>
+      <label><input type="radio" name="src" value="file"><span>ChatGPT／Claude</span></label>
+    </div>
+    <div id="src-gem">
+      <p class="hint">在 Gem 對話中輸入「<b>填入範本</b>」，Gem 會給一整段資料。按程式碼區塊右上角的「複製」，貼到下面。</p>
+      <textarea id="deck" placeholder='{ "topic": "…", "minutes": 7, "slides": [ … ], "script": [ … ] }'></textarea>
+    </div>
+    <div id="src-file" hidden>
+      <p class="hint">上傳 ChatGPT 或 Claude 產生的「<b>○○_簡報骨架.pptx</b>」（檔案裡已經存有全部內容與講稿，不用另外複製）。</p>
+      <input type="file" id="deckfile" accept=".pptx">
+      <div class="status" id="deckinfo"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><b>2</b>選擇你的 PPT 範本（.pptx）</h2>
+    <p class="hint">範本建議包含：第 1 頁封面、「目錄」頁、「前言」頁、內容頁（標題＋內文框）、「心得／結語」頁、「資料來源／參考資料」頁。內容頁不足 5 頁會自動複製補足，多的會刪掉。Google 簡報的範本請先「檔案 → 下載 → Microsoft PowerPoint (.pptx)」。</p>
+    <input type="file" id="tpl" accept=".pptx">
+    <label class="opt"><input type="checkbox" id="delunk" checked> 刪除看不出用途的頁面（例如只有聯絡資訊、空白頁）</label>
+    <pre id="inspect" hidden></pre>
+  </div>
+
+  <div class="row">
+    <button id="go">填入我的範本並下載</button>
+    <button id="plain" class="alt">沒有範本：產生預設骨架</button>
+  </div>
+  <div class="status" id="status"></div>
+  <pre id="report" hidden></pre>
+
+  <div class="card" style="margin-top:18px">
+    <h2>下載之後</h2>
+    <ol class="steps">
+      <li>用 PowerPoint 或 Google 簡報開啟，逐頁檢查文字有沒有超出框外、換行是否自然（自動填入只是起點，版面仍要自己調）。</li>
+      <li>每個內容頁的虛線框寫著要用的 Napkin 圖形：在 Napkin 生成圖片後，刪除虛線框，把圖片貼上並調整大小。</li>
+      <li>講稿在每一頁的「備忘稿」，兩人可用簡報者檢視畫面排練並計時。</li>
+    </ol>
+    <p class="note" style="margin:8px 0 0">第一次使用需要載入約 20 MB 的程式，請等候 10～30 秒；之後會快很多。建議用電腦的 Chrome 或 Edge。</p>
+  </div>
+</main>
+<script src="pyodide/pyodide.js"></script>
+<script>
+let py = null, booting = null;
+const $ = id => document.getElementById(id);
+const H = '/home/pyodide/';
+function status(t, cls) { $('status').innerHTML = cls ? '<span class="' + cls + '">' + t + '</span>' : t; }
+function src() { return document.querySelector('input[name=src]:checked').value; }
+document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('change', () => {
+  $('src-gem').hidden = src() !== 'gem'; $('src-file').hidden = src() !== 'file';
+}));
+
+async function boot() {
+  if (py) return py;
+  if (booting) return booting;
+  booting = (async () => {
+    status('載入程式中（第一次約 10～30 秒）…');
+    const p = await loadPyodide({ indexURL: new URL('pyodide/', location.href).href });
+    await p.loadPackage(['micropip', 'lxml', 'pillow', 'typing-extensions']);
+    const base = new URL('pyodide/', location.href).href;
+    await p.runPythonAsync(`
+import micropip
+await micropip.install(['${base}xlsxwriter-3.2.9-py3-none-any.whl', '${base}python_pptx-1.0.2-py3-none-any.whl'], deps=False)
+`);
+    for (const f of ['ppt_fill.py', 'ppt_deck.py']) {
+      p.FS.writeFile(H + f, await (await fetch(f + '?v=2')).text());
+    }
+    await p.runPythonAsync(`
+exec(open('${H}ppt_fill.py', encoding='utf-8').read())
+_d = {}
+exec(open('${H}ppt_deck.py', encoding='utf-8').read(), _d)
+`);
+    py = p; status('');
+    return p;
+  })();
+  try { return await booting; } finally { booting = null; }
+}
+function pyErr(e) {
+  const m = (e && e.message || String(e)).trim().split('\n').filter(Boolean);
+  const last = m[m.length - 1] || '';
+  return last.replace(/^\w*Error:\s*/, '');
+}
+function download(bytes, name) {
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 10000);
+}
+
+// 讀取簡報內容：回傳 Python 端的 deck（存在全域變數 deck）
+async function loadDeck() {
+  if (src() === 'gem') {
+    const t = $('deck').value.trim();
+    if (!t) throw new Error('請先貼上 Gem 給的資料（在 Gem 輸入「填入範本」）。');
+    py.globals.set('deck_text', t);
+    await py.runPythonAsync(`deck = load_deck(deck_text)`);
+  } else {
+    const f = $('deckfile').files[0];
+    if (!f) throw new Error('請先上傳 ChatGPT 或 Claude 產生的「○○_簡報骨架.pptx」。');
+    py.FS.writeFile(H + 'deck.pptx', new Uint8Array(await f.arrayBuffer()));
+    await py.runPythonAsync(`deck = load_deck('${H}deck.pptx')`);
+  }
+  return py.runPythonAsync(`deck.get('topic', '簡報')`);
+}
+
+$('deckfile').addEventListener('change', async () => {
+  if (!$('deckfile').files[0]) return;
+  $('deckinfo').textContent = '讀取中…';
+  try {
+    await boot();
+    const topic = await loadDeck();
+    $('deckinfo').innerHTML = '<span class="good">✓ 讀到簡報內容：「' + topic.replace(/</g, '&lt;') + '」</span>';
+  } catch (e) { $('deckinfo').innerHTML = '<span class="err">' + pyErr(e) + '</span>'; }
+});
+
+$('tpl').addEventListener('change', async () => {
+  const f = $('tpl').files[0]; if (!f) return;
+  try {
+    await boot();
+    py.FS.writeFile(H + 'template.pptx', new Uint8Array(await f.arrayBuffer()));
+    const r = await py.runPythonAsync(`inspect_template('${H}template.pptx')`);
+    $('inspect').hidden = false;
+    $('inspect').textContent = '範本辨識結果（看不出用途的頁面：' + ($('delunk').checked ? '會刪除' : '保留不動') + '）：\n' + r;
+    status('範本已讀取。');
+  } catch (e) { status('讀取範本失敗：' + pyErr(e) + '（請確認是 .pptx 檔）', 'err'); }
+});
+$('delunk').addEventListener('change', () => { if ($('tpl').files[0]) $('tpl').dispatchEvent(new Event('change')); });
+
+async function run(useTemplate) {
+  $('report').hidden = true;
+  if (useTemplate && !$('tpl').files[0]) { status('請先在第 2 步選擇範本，或按「沒有範本：產生預設骨架」。', 'err'); return; }
+  const btns = [$('go'), $('plain')]; btns.forEach(b => b.disabled = true);
+  try {
+    await boot();
+    let topic;
+    try { topic = await loadDeck(); } catch (e) { status(pyErr(e), 'err'); return; }
+    status('產生中…');
+    const check = await py.runPythonAsync(`
+f, w, ov, st = _d['check'](deck)
+'\\n'.join(['✗ ' + x for x in f] + ['△ ' + x for x in w])
+`);
+    let rep;
+    if (useTemplate) {
+      py.FS.writeFile(H + 'template.pptx', new Uint8Array(await $('tpl').files[0].arrayBuffer()));
+      rep = await py.runPythonAsync(`fill_template('${H}template.pptx', deck, '${H}out.pptx', delete_unknown=${$('delunk').checked ? 'True' : 'False'})`);
+      if (rep.startsWith('✗')) { status(rep, 'err'); return; }
+    } else {
+      await py.runPythonAsync(`_d['_pptx'](deck, '${H}out.pptx')`);
+      rep = '已產生預設骨架（講稿在備忘稿）';
+    }
+    const name = (topic || '簡報').replace(/[\\/:*?"<>|？]/g, '').slice(0, 16) + (useTemplate ? '_簡報.pptx' : '_簡報骨架.pptx');
+    download(py.FS.readFile(H + 'out.pptx'), name);
+    $('report').hidden = false;
+    $('report').textContent = rep.replace(new RegExp(H + 'out\\.pptx', 'g'), name) +
+      (check ? '\n\n內容檢查（回到 AI 修改會更好）：\n' + check : '\n\n內容檢查：通過');
+    status('完成！檔案已下載：' + name, 'good');
+  } catch (e) {
+    status('發生錯誤：' + pyErr(e), 'err');
+  } finally { btns.forEach(b => b.disabled = false); }
+}
+$('go').addEventListener('click', () => run(true));
+$('plain').addEventListener('click', () => run(false));
+</script>
+</body>
+</html>

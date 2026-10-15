@@ -12,6 +12,7 @@
   const PAGE_W_TW = 11906 - 2 * MARGIN_LR;      // 9638 twips
   const PAGE_H_PT = (16838 - 2 * MARGIN_TB) / 20; // 773.9 點可用高度
   const IND = 480;                              // 一個字寬（twips）
+  const HANG = 709;                             // 凸排位移 1.25 公分（twips）
   const TABLE_LH = 360;                         // 表格內固定行高 18 點
   const NAPKIN_CM = 4.5;
 
@@ -79,8 +80,8 @@
       else if (b.type === 'caption') out.push({ kind: 'p', runs: [[b.text, false]], left: 0, first: 0, align: 'center' });
       else if (b.type === 'ref') out.push({ kind: 'p', runs: [[b.text, false]], left: 2.5 * IND, first: IND, align: 'left' });
       else if (b.type === 'item') {
-        // （一）：左 4 字、凸排 3 字；1.：左 3.5 字、凸排 1.5 字（與 Claude 版 Word 相同）
-        const lv = b.level === 1 ? { left: 4 * IND, first: IND } : { left: 3.5 * IND, first: 2 * IND };
+        // （一）：首行縮 1 字、凸排 1.25 公分；1.：首行縮 2 字、凸排 1.25 公分
+        const lv = b.level === 1 ? { left: IND + HANG, first: IND } : { left: 2 * IND + HANG, first: 2 * IND };
         const runs = [[b.num, false]];
         if (b.label) runs.push([b.label, true]);
         if (b.text) runs.push([b.text, false]);
